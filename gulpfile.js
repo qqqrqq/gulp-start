@@ -1,89 +1,156 @@
-const { src, dest, watch, parallel, series } = require('gulp')
+let project_folder = 'build'
+let source_folder = 'src'
 
-const scss = require('gulp-sass')(require('sass'))
-const concat = require('gulp-concat')
-const browserSync = require('browser-sync').create()
-const uglify = require('gulp-uglify-es').default
-const autoprefixer = require('gulp-autoprefixer')
-const imagemin = require('gulp-imagemin')
-const del = require('del')
-
-function images(){
-    return src('app/images/**/*')
-       .pipe(imagemin([
-        imagemin.gifsicle({interlaced: true}),
-        imagemin.mozjpeg({quality: 75, progressive: true}),
-        imagemin.optipng({optimizationLevel: 5}),
-        imagemin.svgo({
-            plugins: [
-                {removeViewBox: true},
-                {cleanupIDs: false}
-            ]
-        })
-    ]))
-       .pipe(dest('dist/images'))
+let path = {
+    build: {
+        html: project_folder + '/',
+        css: project_folder + '/css/',
+        js: project_folder + '/js/',
+        img: project_folder + '/img/',
+        fonts: project_folder + '/fonts/',
+    },
+    src: {
+        html: [source_folder + '/*.html', '!' + source_folder + '/_*.html'],
+        css: source_folder + '/scss/style.scss',
+        js: source_folder + '/js/scripts.js',
+        img: source_folder + '/img/**/*.+(png|jpg|jpeg|ico|svg|webp)',
+        fonts: source_folder + '/fonts/*',
+    },
+    watch: {
+        html: source_folder + '/**/*.html',
+        css: source_folder + ['/scss/**/*.scss'],
+        js: source_folder + '/js/**/*.js',
+        img: source_folder + '/img/**/*.+(png|jpg|jpeg|ico|svg|webp)',
+        fonts: source_folder + '/fonts/*',
+    },
+    clean: './' + project_folder + '/',
 }
 
+let { src, dest } = require('gulp'),
+    gulp = require('gulp'),
+    browsersync = require('browser-sync').create(),
+    fileinclude = require('gulp-file-include'),
+    del = require('del'),
+    scss = require('gulp-sass')(require('sass')),
+    autoprefixer = require('gulp-autoprefixer'),
+    group_media = require('gulp-group-css-media-queries'),
+    clean_css = require('gulp-clean-css'),
+    rename = require('gulp-rename'),
+    uglify = require('gulp-uglify-es').default,
+    imagemin = require('gulp-imagemin')
 
-function cleanDist(){
-    return del('dist')
-}
-
-function browsersync() {
-    browserSync.init({
+// Browser Sync
+function browserSync(params) {
+    browsersync.init({
         server: {
-            baseDir: 'app/'
-        }
+            baseDir: './' + project_folder + '/',
+        },
+        port: 3000,
+        notify: false,
     })
 }
 
-function scripts() {
-    return src([
-        /*'node_modules/jquery/dist/jquery.js',*/
-        'app/js/main.js'
-    ])
-        .pipe(concat('main.min.js'))
+// HTML
+function html() {
+    return src(path.src.html)
+        .pipe(fileinclude())
+        .pipe(dest(path.build.html))
+        .pipe(browsersync.reload({ stream: true }))
+}
+
+// Images
+function images() {
+    return src(path.src.img).pipe(dest(path.build.img)).pipe(browsersync.stream())
+}
+
+// Fonts
+function fonts() {
+    return src(path.src.fonts).pipe(dest(path.build.fonts)).pipe(browsersync.stream())
+}
+
+// Images Compress
+function img() {
+    return src(path.src.img)
+        .pipe(
+            imagemin([
+                imagemin.gifsicle({ interlaced: true }),
+                imagemin.mozjpeg({ quality: 75, progressive: true }),
+                imagemin.optipng({ optimizationLevel: 5 }),
+                imagemin.svgo({
+                    plugins: [{ removeViewBox: true }, { cleanupIDs: false }],
+                }),
+            ]),
+        )
+        .pipe(dest(path.build.img))
+}
+
+// JavaScript
+function js() {
+    return src(path.src.js)
+        .pipe(fileinclude())
+        .pipe(dest(path.build.js))
         .pipe(uglify())
-        .pipe(dest('app/js'))
-        .pipe(browserSync.stream())
+        .pipe(
+            rename({
+                extname: '.min.js',
+            }),
+        )
+        .pipe(dest(path.build.js))
+        .pipe(browsersync.stream())
 }
 
-function styles() {
-    return src('app/scss/style.scss')
-        .pipe(scss({ outputStyle: 'compressed' }))
-        .pipe(concat('style.min.css'))
-        .pipe(autoprefixer({
-            overrideBrowserslist: ['last 10 version'],
-            grid: true
-        }))
-        .pipe(dest('app/css'))
-        .pipe(browserSync.stream())
+// CSS
+function css() {
+    return src(path.src.css)
+        .pipe(
+            scss({
+                outputStyle: 'expanded',
+            }),
+        )
+        .pipe(group_media())
+        .pipe(
+            autoprefixer({
+                cascade: true,
+                overrideBrowserslist: ['last 5 versions'],
+            }),
+        )
+        .pipe(dest(path.build.css))
+        .pipe(clean_css())
+        .pipe(
+            rename({
+                extname: '.min.css',
+            }),
+        )
+        .pipe(dest(path.build.css))
+        .pipe(browsersync.stream())
 }
 
-function watching() {
-    watch(['app/scss/**/*.scss'], styles)
-    watch(['app/js/**/*.js', '!app/js/main.min.js'], scripts)
-    watch(['app/*.html']).on('change', browserSync.reload)
+// Watch Files
+function watchFiles(params) {
+    gulp.watch([path.watch.html], html)
+    gulp.watch([path.watch.css], css)
+    gulp.watch([path.watch.js], js)
+    gulp.watch([path.watch.img], images)
+    gulp.watch([path.watch.fonts], fonts)
 }
 
-function build() {
-    return src([
-        'app/css/style.min.css',
-        'app/fonts/**/*',
-        'app/js/main.min.js',
-        'app/*.html'
-    ], { base: 'app' })
-        .pipe(dest('dist'))
+// Clean
+function clean(params) {
+    return del(path.clean)
 }
 
+// let build = gulp.series(clean, gulp.parallel(html, js, css, images, fonts))
 
-exports.styles = styles
-exports.watching = watching
-exports.browsersync = browsersync
-exports.scripts = scripts;
-exports.cleanDist = cleanDist;
+// Without clean build
+let build = gulp.series(gulp.parallel(html, js, css, images, fonts))
+let watch = gulp.parallel(build, watchFiles, browserSync)
 
-exports.images = images;
-exports.build = series(cleanDist,images,build);
-
-exports.default = parallel(styles,scripts, browsersync, watching)
+exports.img = img
+exports.images = images
+exports.js = js
+exports.html = html
+exports.css = css
+exports.fonts = fonts
+exports.build = build
+exports.watch = watch
+exports.default = watch
