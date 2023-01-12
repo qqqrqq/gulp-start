@@ -75,7 +75,7 @@ nav {
         z-index: 102;
         cursor: pointer;
 
-        &.active-burger {
+        &.active {
             &:before {
                 background: $burgerActiveColor;
                 transform: rotate(45deg);
